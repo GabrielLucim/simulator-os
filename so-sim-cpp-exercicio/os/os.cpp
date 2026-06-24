@@ -1,11 +1,10 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <cstdint>
 #include <cstdlib>
-#include <thread>
-#include <chrono>
 
 #include "../config.h"
 #include "../lib.h"
@@ -13,10 +12,11 @@
 #include "os.h"
 #include "os-lib.h"
 
+namespace OS
+{
 
-namespace OS {
-
-	struct Process {
+	struct Process
+	{
 		uint16_t id;
 		uint16_t registrars[Config::nregs];
 		uint16_t pointControl;
@@ -28,11 +28,11 @@ namespace OS {
 	uint16_t cmd_length = 0;
 
 	Arch::Cpu *g_cpu = nullptr;
-	static Process* current_process = nullptr;
+	static Process *current_process = nullptr;
 
 	// ---------------------------------------
 
-	void boot (Arch::Cpu *cpu)
+	void boot(Arch::Cpu *cpu)
 	{
 		g_cpu = cpu;
 		cmd_length = 0;
@@ -46,26 +46,82 @@ namespace OS {
 
 	// ---------------------------------------
 
-	void interrupt (const InterruptCode interrupt)
+	void interrupt(const InterruptCode interrupt)
 	{
-		if (interrupt == InterruptCode::Keyboard) {
+		if (interrupt == InterruptCode::Keyboard)
+		{
 			const uint16_t input = g_cpu->read_io(IO_Port::TerminalReadTypedChar);
 
-			if (terminal_is_return(input)) {
+			if (terminal_is_return(input))
+			{
 				terminal_println(g_cpu, Terminal::Command, "");
 
 				std::string_view command(cmd_buffer, cmd_length);
-				if (!command.empty()) {
-					if (command == "quit" || command == "exit") {
+				if (!command.empty())
+				{
+					if (command == "quit" || command == "exit")
+					{
 						terminal_println(g_cpu, Terminal::Kernel, "Desligando o simulador...");
 						g_cpu->turn_off();
 					}
-					else if (command.starts_with("load ")) {
+					else if (command.starts_with("load "))
+					{
 						std::string_view nome_programa = command.substr(5);
-						terminal_print_str(g_cpu, Terminal::Kernel, "Carregando arquivo do disco: ");
-						terminal_println(g_cpu, Terminal::Kernel, std::string(nome_programa).c_str());
+						std::string arquivo_str(nome_programa);
+
+						terminal_print_str(g_cpu, Terminal::Kernel, "Buscando arquivo: ");
+						terminal_println(g_cpu, Terminal::Kernel, arquivo_str.c_str());
+
+						std::vector<uint16_t> buffer_programa;
+
+						try
+						{
+							buffer_programa = Lib::load_from_disk_to_16bit_buffer(arquivo_str);
+						}
+						catch (const std::exception &e)
+						{
+							terminal_println(g_cpu, Terminal::Kernel, "ERRO: Falha critica ao abrir o arquivo no disco.");
+							buffer_programa.clear();
+						}
+
+						if (buffer_programa.empty())
+						{
+							terminal_println(g_cpu, Terminal::Kernel, "ERRO: O arquivo nao existe ou esta corrompido!");
+						}
+						else
+						{
+							uint16_t endereco_carga = 0;
+							for (uint16_t instrucao : buffer_programa)
+							{
+								g_cpu->pmem_write(endereco_carga, instrucao);
+								endereco_carga++;
+							}
+
+							terminal_println(g_cpu, Terminal::Kernel, "Programa carregado na RAM com sucesso!");
+
+							if (current_process != nullptr)
+							{
+								delete current_process;
+							}
+
+							current_process = new Process();
+							current_process->id = 1;
+							current_process->pointControl = 0x0000;
+							current_process->active = true;
+
+							size_t i = 0;
+							for (; i < arquivo_str.length() && i < 63; i++)
+							{
+								current_process->name[i] = arquivo_str[i];
+							}
+							current_process->name[i] = '\0';
+
+							g_cpu->set_pc(current_process->pointControl);
+							terminal_println(g_cpu, Terminal::Kernel, "Processo criado. CPU pronta em 0x0000.");
+						}
 					}
-					else {
+					else
+					{
 						terminal_print_str(g_cpu, Terminal::Kernel, "Comando invalido: ");
 						terminal_println(g_cpu, Terminal::Kernel, std::string(command).c_str());
 					}
@@ -74,19 +130,23 @@ namespace OS {
 				cmd_length = 0;
 				terminal_print_str(g_cpu, Terminal::Command, "> ");
 			}
-			else if (terminal_is_backspace(input)) {
-				if (cmd_length > 0) {
+			else if (terminal_is_backspace(input))
+			{
+				if (cmd_length > 0)
+				{
 					cmd_length--;
 
 					g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Command));
 					g_cpu->write_io(IO_Port::TerminalUpload, '\r');
 					terminal_print_str(g_cpu, Terminal::Command, "> ");
-					for (int i = 0; i < cmd_length; i++) {
+					for (int i = 0; i < cmd_length; i++)
+					{
 						g_cpu->write_io(IO_Port::TerminalUpload, static_cast<uint16_t>(cmd_buffer[i]));
 					}
 				}
 			}
-			else if (cmd_length < 256) {
+			else if (cmd_length < 256)
+			{
 				cmd_buffer[cmd_length++] = static_cast<char>(input);
 				g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Command));
 				g_cpu->write_io(IO_Port::TerminalUpload, input);
@@ -96,24 +156,10 @@ namespace OS {
 
 	// ---------------------------------------
 
-	void syscall ()
+	void syscall()
 	{
-
 	}
 
 	// ---------------------------------------
-
-	void main_loop (Arch::Cpu *cpu)
-	{
-		g_cpu = cpu;
-
-		while (true) {
-			if (current_process == nullptr || !current_process->active) {
-				std::this_thread::sleep_for(std::chrono::milliseconds(10));
-			} else {
-				std::this_thread::sleep_for(std::chrono::milliseconds(10));
-			}
-		}
-	}
 
 } // end namespace OS
