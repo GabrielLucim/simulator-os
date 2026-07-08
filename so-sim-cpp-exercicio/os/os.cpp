@@ -14,7 +14,6 @@
 
 namespace OS
 {
-
 	struct Process
 	{
 		uint16_t id;
@@ -29,26 +28,50 @@ namespace OS
 
 	Arch::Cpu *g_cpu = nullptr;
 	static Process *current_process = nullptr;
-	static bool system_is_idle = true;
 
-	// ---------------------------------------
+	void load_idle_program()
+	{
+		try
+		{
+			std::vector<uint16_t> buffer_idle = Lib::load_from_disk_to_16bit_buffer("idle.bin");
+			if (!buffer_idle.empty())
+			{
+				uint16_t addr = 0;
+				for (uint16_t instr : buffer_idle)
+				{
+					g_cpu->pmem_write(addr++, instr);
+				}
+				g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
+				terminal_println(g_cpu, Terminal::Kernel, "System Idle. Executando idle.bin...");
+
+				for (uint8_t r = 0; r < Config::nregs; r++)
+					g_cpu->set_gpr(r, 0);
+				g_cpu->set_pc(1);
+			}
+		}
+		catch (...)
+		{
+			g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
+			terminal_println(g_cpu, Terminal::Kernel, "Aviso: idle.bin nao encontrado. Usando loop de seguranca.");
+			g_cpu->pmem_write(0, 0xE000);
+			g_cpu->pmem_write(1, 0x8000);
+			g_cpu->set_pc(1);
+		}
+	}
 
 	void boot(Arch::Cpu *cpu)
 	{
 		g_cpu = cpu;
 		cmd_length = 0;
-		system_is_idle = true;
 
 		terminal_println(g_cpu, Terminal::Command, "Type commands here");
 		terminal_println(g_cpu, Terminal::App, "Apps output here");
 		terminal_println(g_cpu, Terminal::Kernel, "Kernel output here");
 
-		terminal_println(g_cpu, Terminal::Kernel, "System Idle. Waiting for programs...");
+		load_idle_program();
 
 		terminal_print_str(g_cpu, Terminal::Command, "> ");
 	}
-
-	// ---------------------------------------
 
 	void interrupt(const InterruptCode interrupt)
 	{
@@ -70,6 +93,22 @@ namespace OS
 						terminal_println(g_cpu, Terminal::Kernel, "Desligando o simulador...");
 						g_cpu->turn_off();
 					}
+					else if (command == "kill")
+					{
+						g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
+						if (current_process != nullptr)
+						{
+							terminal_print_str(g_cpu, Terminal::Kernel, "Processo abortado: ");
+							terminal_println(g_cpu, Terminal::Kernel, current_process->name);
+							delete current_process;
+							current_process = nullptr;
+							load_idle_program();
+						}
+						else
+						{
+							terminal_println(g_cpu, Terminal::Kernel, "Nenhum processo em execucao.");
+						}
+					}
 					else if (command.starts_with("load "))
 					{
 						std::string_view nome_programa = command.substr(5);
@@ -80,7 +119,6 @@ namespace OS
 						terminal_println(g_cpu, Terminal::Kernel, arquivo_str.c_str());
 
 						std::vector<uint16_t> buffer_programa;
-
 						try
 						{
 							buffer_programa = Lib::load_from_disk_to_16bit_buffer(arquivo_str);
@@ -88,14 +126,14 @@ namespace OS
 						catch (const std::exception &e)
 						{
 							g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
-							terminal_println(g_cpu, Terminal::Kernel, "ERRO: Falha critica ao abrir o arquivo no disco.");
+							terminal_println(g_cpu, Terminal::Kernel, "ERRO: Falha critica ao ler o disco.");
 							buffer_programa.clear();
 						}
 
 						if (buffer_programa.empty())
 						{
 							g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
-							terminal_println(g_cpu, Terminal::Kernel, "ERRO: O arquivo nao existe ou esta corrompido!");
+							terminal_println(g_cpu, Terminal::Kernel, "ERRO: Arquivo corrompido ou inexistente!");
 						}
 						else
 						{
@@ -107,16 +145,14 @@ namespace OS
 							}
 
 							g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
-							terminal_println(g_cpu, Terminal::Kernel, "Programa carregado na RAM com sucesso!");
+							terminal_println(g_cpu, Terminal::Kernel, "Programa carregado com sucesso!");
 
 							if (current_process != nullptr)
-							{
 								delete current_process;
-							}
 
 							current_process = new Process();
 							current_process->id = 1;
-							current_process->pointControl = 0x0000;
+							current_process->pointControl = 1;
 							current_process->active = true;
 
 							size_t i = 0;
@@ -126,13 +162,9 @@ namespace OS
 							}
 							current_process->name[i] = '\0';
 
-							for (uint8_t r = 0; r < Config::nregs; r++) {
+							for (uint8_t r = 0; r < Config::nregs; r++)
 								g_cpu->set_gpr(r, 0);
-							}
-							system_is_idle = false; 
-
 							g_cpu->set_pc(current_process->pointControl);
-							terminal_println(g_cpu, Terminal::Kernel, "Processo criado. CPU pronta em 0x0000.");
 						}
 					}
 					else
@@ -143,11 +175,9 @@ namespace OS
 					}
 				}
 
-				for (int i = 0; i < 256; i++) {
+				for (int i = 0; i < 256; i++)
 					cmd_buffer[i] = '\0';
-				}
 				cmd_length = 0;
-
 				g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Command));
 				terminal_print_str(g_cpu, Terminal::Command, "> ");
 			}
@@ -157,7 +187,6 @@ namespace OS
 				{
 					cmd_length--;
 					cmd_buffer[cmd_length] = '\0';
-
 					g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Command));
 					g_cpu->write_io(IO_Port::TerminalUpload, '\r');
 					terminal_print_str(g_cpu, Terminal::Command, "> ");
@@ -174,64 +203,69 @@ namespace OS
 				g_cpu->write_io(IO_Port::TerminalUpload, input);
 			}
 		}
-	}
+		else if (interrupt == InterruptCode::CpuException)
+		{
+			g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
+			terminal_println(g_cpu, Terminal::Kernel, "EXCECAO DE CPU ENCONTRADA (GPF)");
 
-	// ---------------------------------------
+			if (current_process != nullptr)
+			{
+				terminal_print_str(g_cpu, Terminal::Kernel, "Matando processo causador: ");
+				terminal_println(g_cpu, Terminal::Kernel, current_process->name);
+				delete current_process;
+				current_process = nullptr;
+			}
+			load_idle_program();
+		}
+	}
 
 	void syscall()
 	{
 		const uint16_t syscall_num = g_cpu->get_gpr(0);
 
-		switch (syscall_num) {
-			case 0:
-				if (current_process != nullptr) {
-					g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
-					terminal_print_str(g_cpu, Terminal::Kernel, "Processo finalizado: ");
-					terminal_println(g_cpu, Terminal::Kernel, current_process->name);
-					delete current_process;
-					current_process = nullptr;
-				}
-
-				system_is_idle = true;
+		switch (syscall_num)
+		{
+		case 0:
+			if (current_process != nullptr)
+			{
 				g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
-				terminal_println(g_cpu, Terminal::Kernel, "System Idle. Waiting for programs...");
-
-				g_cpu->pmem_write(0, 0xE000);
-				g_cpu->pmem_write(1, 0x8000);
-				g_cpu->set_pc(0);
-			break;
-
-			case 1:
-			{
-				uint16_t addr = g_cpu->get_gpr(1);
-				uint16_t ch;
-				g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::App));
-				while ((ch = g_cpu->pmem_read(addr)) != 0) {
-					const char str[2] = { static_cast<char>(ch), '\0' };
-					terminal_print_str(g_cpu, Terminal::App, str);
-					addr++;
-				}
+				terminal_print_str(g_cpu, Terminal::Kernel, "Processo finalizado: ");
+				terminal_println(g_cpu, Terminal::Kernel, current_process->name);
+				delete current_process;
+				current_process = nullptr;
 			}
+			load_idle_program();
 			break;
 
-			case 2:
-				g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::App));
-				terminal_print_str(g_cpu, Terminal::App, "\n");
-			break;
-
-			case 3:
+		case 1:
+		{
+			uint16_t addr = g_cpu->get_gpr(1);
+			uint16_t ch;
+			g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::App));
+			while ((ch = g_cpu->pmem_read(addr)) != 0)
 			{
-				uint16_t value = g_cpu->get_gpr(1);
-				g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::App));
-				terminal_println(g_cpu, Terminal::App, std::to_string(value).c_str());
+				const char str[2] = {static_cast<char>(ch), '\0'};
+				terminal_print_str(g_cpu, Terminal::App, str);
+				addr++;
 			}
+		}
+		break;
+
+		case 2:
+			g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::App));
+			terminal_print_str(g_cpu, Terminal::App, "\n");
 			break;
 
-			default:
+		case 3:
+		{
+			uint16_t value = g_cpu->get_gpr(1);
+			g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::App));
+			terminal_println(g_cpu, Terminal::App, std::to_string(value).c_str());
+		}
+		break;
+
+		default:
 			break;
 		}
 	}
-
-	// ---------------------------------------
-
-} // end namespace OS
+}
