@@ -1,11 +1,12 @@
 #include "mem_virtual.h"
+#include "process_manager.h"
 #include "os.h"
 #include "../config.h"
 
 namespace OS
 {
     uint16_t next_free_physical_frame = 2;
-    Arch::Cpu::PageTable g_kernel_page_table;
+    Arch::Cpu *g_cpu = nullptr;
 
     uint16_t vaddr_to_paddr(uint16_t vaddr)
     {
@@ -14,13 +15,13 @@ namespace OS
             return vaddr;
         }
 
-        uint16_t vpage = vaddr / Config::page_size;
-        uint16_t offset = vaddr % Config::page_size;
+        uint16_t vpage = vaddr >> 4;
+        uint16_t offset = vaddr & 0x000F;
 
         auto &entry = g_cpu->get_page_table()->at(vpage);
         uint16_t phy_frame = entry.get(Arch::Cpu::PteField::PhyFrameID);
 
-        return (phy_frame * Config::page_size) + offset;
+        return (phy_frame << 4) | offset;
     }
 
     void configure_hardware_page(uint16_t vpage, uint16_t phy_frame, bool present, bool readable, bool writeable, bool executable)

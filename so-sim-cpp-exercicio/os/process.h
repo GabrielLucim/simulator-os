@@ -3,18 +3,23 @@
 
 #include <cstdint>
 #include "../config.h"
+#include "../arch/arch.h"
 
 namespace OS
 {
-	struct Process
-	{
-		uint16_t id;
-		uint16_t registrars[Config::nregs];
-		uint16_t pointControl;
-		bool active;
-		char name[64];
-		bool allocated_vpages[Config::ptes_per_table];
-	};
+    struct Process
+    {
+        uint16_t id;
+        char name[64];
+        uint16_t pointControl;
+        bool active;
+
+        // Tabela de páginas por processo
+        Arch::Cpu::PageTable page_table;
+
+        // Controle de páginas virtuais alocadas via syscall
+        bool allocated_vpages[Config::ptes_per_table];
+    };
 }
 
 #endif
