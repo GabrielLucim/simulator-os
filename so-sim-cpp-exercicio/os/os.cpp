@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <cstdlib>
 
-
 #include "../config.h"
 #include "../lib.h"
 #include "../arch/arch.h"
@@ -15,18 +14,15 @@
 #include "mem_virtual.h"
 #include "process_manager.h"
 
-
 namespace OS
 {
     char cmd_buffer[256];
     uint16_t cmd_length = 0;
 
-
     static void reset_cmd_buffer();
     static void process_shell_command();
     static void handle_keyboard_input();
     static void handle_page_fault_or_gpf();
-
 
     // syscalls
     static void sys_process_exit();
@@ -34,42 +30,35 @@ namespace OS
     static void sys_print_newline();
     static void sys_print_integer();
 
-
     static void reset_cmd_buffer()
     {
         for (int i = 0; i < 256; i++)
             cmd_buffer[i] = '\0';
         cmd_length = 0;
-       
+        
         g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Command));
         terminal_print_str(g_cpu, Terminal::Command, "> ");
     }
-
 
     void boot(Arch::Cpu *cpu)
     {
         g_cpu = cpu;
         cmd_length = 0;
 
-
         g_cpu->set_vmem_mode(VmemMode::Paging);
 
-
         g_cpu->write_io(IO_Port::TimerInterruptCycles, 1000);
-
 
         terminal_println(g_cpu, Terminal::Command, "Type commands here");
         terminal_println(g_cpu, Terminal::App, "Apps output here");
         terminal_println(g_cpu, Terminal::Kernel, "Kernel output here");
 
-
-        Process *idle = load_user_program("idle.bin");
-        execute_process(idle);
-
+        // Carrega o idle.bin uma única vez e o mantém residente na RAM
+        idle_process = load_user_program("idle.bin");
+        execute_process(idle_process);
 
         terminal_print_str(g_cpu, Terminal::Command, "> ");
     }
-
 
     void interrupt(const InterruptCode interrupt)
     {
@@ -79,11 +68,9 @@ namespace OS
             handle_keyboard_input();
             break;
 
-
         case InterruptCode::CpuException:
             handle_page_fault_or_gpf();
             break;
-
 
         case InterruptCode::Timer:
         case InterruptCode::Disk:
@@ -91,11 +78,9 @@ namespace OS
         }
     }
 
-
     static void handle_keyboard_input()
     {
         uint16_t input = g_cpu->read_io(IO_Port::TerminalReadTypedChar);
-
 
         if (terminal_is_return(input))
         {
@@ -124,12 +109,10 @@ namespace OS
         }
     }
 
-
     static void process_shell_command()
     {
         g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Command));
         terminal_println(g_cpu, Terminal::Command, "");
-
 
         std::string_view command(cmd_buffer, cmd_length);
         if (!command.empty())
@@ -147,7 +130,7 @@ namespace OS
             else if (command.starts_with("load "))
             {
                 Process *proc = load_user_program(command.substr(5));
-               
+                
                 if (proc != nullptr)
                 {
                     execute_process(proc);
@@ -163,17 +146,22 @@ namespace OS
         reset_cmd_buffer();
     }
 
-
     static void handle_page_fault_or_gpf()
     {
         g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
         auto exception_info = g_cpu->get_ref_cpu_exception();
 
-
         terminal_print_str(g_cpu, Terminal::Kernel, "!!! FALHA DE CPU / GPF DETECTADA (");
         terminal_print_str(g_cpu, Terminal::Kernel, Arch::enum_class_to_str(exception_info.type));
         terminal_println(g_cpu, Terminal::Kernel, ") !!!");
 
+        // Se a falha ocorreu no próprio idle, temos um erro fatal do sistema
+        if (current_process == idle_process || current_process == nullptr)
+        {
+            terminal_println(g_cpu, Terminal::Kernel, "PANIC: Falha fatal de CPU no idle.bin! Desligando...");
+            g_cpu->turn_off();
+            return;
+        }
 
         if (current_process != nullptr)
         {
@@ -181,16 +169,13 @@ namespace OS
             terminal_println(g_cpu, Terminal::Kernel, current_process->name);
         }
 
-
-        Process *idle = load_user_program("idle.bin");
-        execute_process(idle);
+        // Restaura a execução do idle_process residente sem recarregar do disco
+        execute_process(idle_process);
     }
-
 
     void syscall()
     {
         const uint16_t syscall_num = g_cpu->get_gpr(0);
-
 
         switch (syscall_num)
         {
@@ -202,7 +187,6 @@ namespace OS
         }
     }
 
-
     static void sys_process_exit()
     {
         if (current_process != nullptr)
@@ -211,38 +195,51 @@ namespace OS
             terminal_print_str(g_cpu, Terminal::Kernel, "Processo finalizado: ");
             terminal_println(g_cpu, Terminal::Kernel, current_process->name);
         }
-       
-        Process *idle = load_user_program("idle.bin");
-        execute_process(idle);
+        
+        // Retorna a execução para o idle_process (residente na RAM)
+        execute_process(idle_process);
     }
-
 
     static void sys_print_string()
     {
         uint16_t vaddr = g_cpu->get_gpr(1);
         g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::App));
         
-        while (true)
+        try
         {
-            uint16_t paddr = vaddr_to_paddr(vaddr);
-            uint16_t val = g_cpu->pmem_read(paddr);
-            
-            if (val == 0) break;
-
-            char ch1 = static_cast<char>(val & 0xFF);
-            if (ch1 == '\0') break;
-
-            const char str1[2] = {ch1, '\0'};
-            terminal_print_str(g_cpu, Terminal::App, str1);
-
-            char ch2 = static_cast<char>((val >> 8) & 0xFF);
-            if (ch2 != '\0')
+            while (true)
             {
-                const char str2[2] = {ch2, '\0'};
-                terminal_print_str(g_cpu, Terminal::App, str2);
-            }
+                uint16_t paddr = vaddr_to_paddr(vaddr);
+                
+                // Endereço inválido/página não mapeada atinge a proteção
+                if (paddr == 0xFFFF)
+                {
+                    break;
+                }
 
-            vaddr++;
+                uint16_t val = g_cpu->pmem_read(paddr);
+                
+                if (val == 0) break;
+
+                char ch1 = static_cast<char>(val & 0xFF);
+                if (ch1 == '\0') break;
+
+                const char str1[2] = {ch1, '\0'};
+                terminal_print_str(g_cpu, Terminal::App, str1);
+
+                char ch2 = static_cast<char>((val >> 8) & 0xFF);
+                if (ch2 != '\0')
+                {
+                    const char str2[2] = {ch2, '\0'};
+                    terminal_print_str(g_cpu, Terminal::App, str2);
+                }
+
+                vaddr++;
+            }
+        }
+        catch (...)
+        {
+            // Captura qualquer tentativa ilícita de leitura além da memória do processo
         }
     }
 
@@ -251,7 +248,6 @@ namespace OS
         g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::App));
         terminal_print_str(g_cpu, Terminal::App, "\n");
     }
-
 
     static void sys_print_integer()
     {
