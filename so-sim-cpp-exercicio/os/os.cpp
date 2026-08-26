@@ -24,7 +24,6 @@ namespace OS
     static void handle_keyboard_input();
     static void handle_page_fault_or_gpf();
 
-    // syscalls
     static void sys_process_exit();
     static void sys_print_string();
     static void sys_print_newline();
@@ -53,7 +52,6 @@ namespace OS
         terminal_println(g_cpu, Terminal::App, "Apps output here");
         terminal_println(g_cpu, Terminal::Kernel, "Kernel output here");
 
-        // Carrega o idle.bin uma única vez e o mantém residente na RAM
         idle_process = load_user_program("idle.bin");
         execute_process(idle_process);
 
@@ -155,7 +153,6 @@ namespace OS
         terminal_print_str(g_cpu, Terminal::Kernel, Arch::enum_class_to_str(exception_info.type));
         terminal_println(g_cpu, Terminal::Kernel, ") !!!");
 
-        // Se a falha ocorreu no próprio idle, temos um erro fatal do sistema
         if (current_process == idle_process || current_process == nullptr)
         {
             terminal_println(g_cpu, Terminal::Kernel, "PANIC: Falha fatal de CPU no idle.bin! Desligando...");
@@ -169,7 +166,6 @@ namespace OS
             terminal_println(g_cpu, Terminal::Kernel, current_process->name);
         }
 
-        // Restaura a execução do idle_process residente sem recarregar do disco
         execute_process(idle_process);
     }
 
@@ -196,7 +192,6 @@ namespace OS
             terminal_println(g_cpu, Terminal::Kernel, current_process->name);
         }
         
-        // Retorna a execução para o idle_process (residente na RAM)
         execute_process(idle_process);
     }
 
@@ -211,7 +206,6 @@ namespace OS
             {
                 uint16_t paddr = vaddr_to_paddr(vaddr);
                 
-                // Endereço inválido/página não mapeada atinge a proteção
                 if (paddr == 0xFFFF)
                 {
                     break;

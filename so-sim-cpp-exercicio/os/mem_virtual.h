@@ -8,7 +8,6 @@ namespace OS
 {
     extern Arch::Cpu *g_cpu;
 
-    // Gerenciador de Frames Físicos da RAM
     int allocate_physical_frame();
     void free_physical_frame(uint16_t frame);
 

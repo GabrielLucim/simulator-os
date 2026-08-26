@@ -62,7 +62,6 @@ namespace OS
             int frame = allocate_physical_frame();
             if (frame == -1)
             {
-                // Tratamento caso a memória física acabe
                 break;
             }
 
@@ -88,7 +87,6 @@ namespace OS
     {
         if (proc == nullptr) return;
 
-        // Libera todos os frames físicos alocados para o processo na RAM
         for (size_t p = 0; p < proc->num_pages && p < Config::ptes_per_table; p++)
         {
             if (proc->allocated_frames[p] != 0xFFFF)
@@ -140,7 +138,6 @@ namespace OS
     {
         if (proc == nullptr) return;
 
-        // Libera a memória do processo anterior apenas se não for o idle
         if (current_process != nullptr && current_process != idle_process && current_process != proc)
         {
             free_process_memory(current_process);
@@ -167,12 +164,10 @@ namespace OS
             terminal_print_str(g_cpu, Terminal::Kernel, "Processo abortado via comando kill: ");
             terminal_println(g_cpu, Terminal::Kernel, current_process->name);
             
-            // Libera a memória física do processo do usuário que foi morto
             free_process_memory(current_process);
             delete current_process;
             current_process = nullptr;
 
-            // Retorna a execução para o idle_process residente na memória (sem ler do disco)
             execute_process(idle_process);
         }
         else

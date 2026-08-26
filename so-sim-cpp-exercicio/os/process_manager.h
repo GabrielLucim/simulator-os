@@ -9,7 +9,7 @@
 namespace OS
 {
     extern Process *current_process;
-    extern Process *idle_process; // Processo idle mantido residente na RAM
+    extern Process *idle_process;
 
     std::vector<uint16_t> read_program_file(std::string_view filename);
     Process* create_process_struct(std::string_view filename, bool is_idle);
