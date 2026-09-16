@@ -14,12 +14,11 @@ namespace OS
         uint16_t pointControl;
         bool active;
 
+        uint16_t gprs[Config::nregs];
+
         Arch::Cpu::PageTable page_table;
 
-        bool allocated_vpages[Config::ptes_per_table];
-
         uint16_t num_pages;  
-        uint16_t allocated_frames[Config::ptes_per_table];
     };
 }
 

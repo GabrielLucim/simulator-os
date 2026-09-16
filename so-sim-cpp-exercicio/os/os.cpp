@@ -204,14 +204,17 @@ namespace OS
         {
             while (true)
             {
-                uint16_t paddr = vaddr_to_paddr(vaddr);
+                int32_t paddr = vaddr_to_paddr(vaddr);
                 
-                if (paddr == 0xFFFF)
+                if (paddr < 0)
                 {
-                    break;
+                    g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
+                    terminal_println(g_cpu, Terminal::Kernel, "[ERRO Syscall 1] Endereco de memoria invalido detectado. Abortando processo...");
+                    kill_current_process();
+                    return;
                 }
 
-                uint16_t val = g_cpu->pmem_read(paddr);
+                uint16_t val = g_cpu->pmem_read(static_cast<uint16_t>(paddr));
                 
                 if (val == 0) break;
 
@@ -233,7 +236,9 @@ namespace OS
         }
         catch (...)
         {
-            // Captura qualquer tentativa ilícita de leitura além da memória do processo
+            g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
+            terminal_println(g_cpu, Terminal::Kernel, "[ERRO Fatal] Excecao na Syscall 1. Abortando...");
+            kill_current_process();
         }
     }
 

@@ -34,6 +34,9 @@ namespace OS
         proc->active = false;
         proc->num_pages = 0;
 
+        for (uint8_t r = 0; r < Config::nregs; r++)
+            proc->gprs[r] = 0;
+
         size_t i = 0;
         for (; i < filename.length() && i < 63; i++)
             proc->name[i] = filename[i];
@@ -41,8 +44,6 @@ namespace OS
 
         for (size_t p = 0; p < Config::ptes_per_table; p++)
         {
-            proc->allocated_vpages[p] = false;
-            proc->allocated_frames[p] = 0xFFFF;
             proc->page_table.at(p).reset();
         }
 
@@ -52,7 +53,7 @@ namespace OS
     void process_memory_config(Process *proc, const std::vector<uint16_t> &buffer)
     {
         size_t words_count = buffer.size();
-        size_t pages_needed = (words_count + 15) >> 4;
+        size_t pages_needed = (words_count + (Config::page_size - 1)) / Config::page_size;
 
         proc->num_pages = static_cast<uint16_t>(pages_needed);
         g_cpu->set_page_table(&proc->page_table);
@@ -66,15 +67,14 @@ namespace OS
             }
 
             uint16_t phy_frame = static_cast<uint16_t>(frame);
-            proc->allocated_frames[p] = phy_frame;
 
             configure_hardware_page(p, phy_frame, true, true, true, true);
             
-            uint16_t phys_base_addr = phy_frame << 4;
+            uint16_t phys_base_addr = phy_frame << Config::page_size_bits;
 
             for (size_t w = 0; w < Config::page_size; w++)
             {
-                size_t global_word_index = (p << 4) | w;
+                size_t global_word_index = (p << Config::page_size_bits) | w;
                 if (global_word_index < words_count)
                 {
                     g_cpu->pmem_write(phys_base_addr + w, buffer[global_word_index]);
@@ -87,14 +87,15 @@ namespace OS
     {
         if (proc == nullptr) return;
 
-        for (size_t p = 0; p < proc->num_pages && p < Config::ptes_per_table; p++)
+        for (size_t p = 0; p < Config::ptes_per_table; p++)
         {
-            if (proc->allocated_frames[p] != 0xFFFF)
+            auto &entry = proc->page_table.at(p);
+            if (entry.get(Arch::Cpu::PteField::Present) == 1)
             {
-                free_physical_frame(proc->allocated_frames[p]);
-                proc->allocated_frames[p] = 0xFFFF;
+                uint16_t frame = entry.get(Arch::Cpu::PteField::PhyFrameID);
+                free_physical_frame(frame);
+                entry.reset();
             }
-            proc->page_table.at(p).reset();
         }
         proc->num_pages = 0;
     }
@@ -138,6 +139,15 @@ namespace OS
     {
         if (proc == nullptr) return;
 
+        if (current_process != nullptr && current_process->active)
+        {
+            current_process->pointControl = g_cpu->get_pc();
+            for (uint8_t r = 0; r < Config::nregs; r++)
+            {
+                current_process->gprs[r] = g_cpu->get_gpr(r);
+            }
+        }
+
         if (current_process != nullptr && current_process != idle_process && current_process != proc)
         {
             free_process_memory(current_process);
@@ -151,7 +161,7 @@ namespace OS
         g_cpu->set_vmem_mode(VmemMode::Paging);
 
         for (uint8_t r = 0; r < Config::nregs; r++)
-            g_cpu->set_gpr(r, 0);
+            g_cpu->set_gpr(r, current_process->gprs[r]);
 
         g_cpu->set_pc(current_process->pointControl);
     }

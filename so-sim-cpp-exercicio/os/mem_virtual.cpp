@@ -32,11 +32,11 @@ namespace OS
         }
     }
 
-    uint16_t vaddr_to_paddr(uint16_t vaddr)
+    int32_t vaddr_to_paddr(uint16_t vaddr)
     {
         if (g_cpu->get_vmem_mode() == VmemMode::Disabled)
         {
-            return vaddr;
+            return static_cast<int32_t>(vaddr);
         }
 
         uint16_t vpage = vaddr >> Config::page_size_bits;
@@ -44,19 +44,19 @@ namespace OS
 
         if (vpage >= Config::ptes_per_table)
         {
-            return 0xFFFF;
+            return -1;
         }
 
         auto &entry = g_cpu->get_page_table()->at(vpage);
 
         if (entry.get(Arch::Cpu::PteField::Present) == 0)
         {
-            return 0xFFFF;
+            return -1;
         }
 
         uint16_t phy_frame = entry.get(Arch::Cpu::PteField::PhyFrameID);
 
-        return (phy_frame << Config::page_size_bits) | offset;
+        return static_cast<int32_t>((phy_frame << Config::page_size_bits) | offset);
     }
 
     void configure_hardware_page(uint16_t vpage, uint16_t phy_frame, bool present, bool readable, bool writeable, bool executable)
