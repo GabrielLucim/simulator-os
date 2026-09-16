@@ -29,6 +29,10 @@ namespace OS
     static void sys_print_newline();
     static void sys_print_integer();
 
+    // Novas funcoes para os comandos do terminal
+    static void cmd_list_processes();
+    static void cmd_kill_process(uint16_t pid);
+
     static void reset_cmd_buffer()
     {
         for (int i = 0; i < 256; i++)
@@ -44,8 +48,9 @@ namespace OS
         g_cpu = cpu;
         cmd_length = 0;
 
-        g_cpu->set_vmem_mode(VmemMode::Paging);
+        init_process_manager();
 
+        g_cpu->set_vmem_mode(VmemMode::Paging);
         g_cpu->write_io(IO_Port::TimerInterruptCycles, 1000);
 
         terminal_println(g_cpu, Terminal::Command, "Type commands here");
@@ -107,6 +112,75 @@ namespace OS
         }
     }
 
+    static void cmd_list_processes()
+    {
+        g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
+        terminal_println(g_cpu, Terminal::Kernel, "--- TABELA DE PROCESSOS ---");
+        terminal_println(g_cpu, Terminal::Kernel, "PID\tNOME\t\tESTADO\t\tMEMORIA");
+
+        for (auto *proc : process_table)
+        {
+            if (proc == nullptr) continue;
+
+            std::string state_str = "Unknown";
+            switch (proc->state)
+            {
+            case ProcessState::Ready:      state_str = "Ready"; break;
+            case ProcessState::Running:    state_str = "Running"; break;
+            case ProcessState::Blocked:    state_str = "Blocked"; break;
+            case ProcessState::Terminated: state_str = "Terminated"; break;
+            }
+
+            // Memoria alocada em palavras (words)
+            uint32_t mem_words = proc->num_pages << Config::page_size_bits;
+
+            std::string line = std::to_string(proc->id) + "\t" +
+                               std::string(proc->name) + "\t\t" +
+                               state_str + "\t\t" +
+                               std::to_string(mem_words) + " words";
+
+            terminal_println(g_cpu, Terminal::Kernel, line.c_str());
+        }
+        terminal_println(g_cpu, Terminal::Kernel, "---------------------------");
+    }
+
+    static void cmd_kill_process(uint16_t pid)
+    {
+        g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
+
+        if (pid == 0)
+        {
+            terminal_println(g_cpu, Terminal::Kernel, "ERRO: Nao e possivel matar o processo idle (PID 0).");
+            return;
+        }
+
+        Process *proc = get_process_by_pid(pid);
+        if (proc == nullptr)
+        {
+            terminal_print_str(g_cpu, Terminal::Kernel, "ERRO: Processo com PID ");
+            terminal_print_str(g_cpu, Terminal::Kernel, std::to_string(pid).c_str());
+            terminal_println(g_cpu, Terminal::Kernel, " nao encontrado.");
+            return;
+        }
+
+        terminal_print_str(g_cpu, Terminal::Kernel, "Matando processo PID ");
+        terminal_print_str(g_cpu, Terminal::Kernel, std::to_string(pid).c_str());
+        terminal_print_str(g_cpu, Terminal::Kernel, " (");
+        terminal_print_str(g_cpu, Terminal::Kernel, proc->name);
+        terminal_println(g_cpu, Terminal::Kernel, ")...");
+
+        if (proc == current_process)
+        {
+            current_process = nullptr;
+            destroy_process(proc);
+            execute_process(idle_process);
+        }
+        else
+        {
+            destroy_process(proc);
+        }
+    }
+
     static void process_shell_command()
     {
         g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Command));
@@ -121,14 +195,27 @@ namespace OS
                 terminal_println(g_cpu, Terminal::Kernel, "Desligando o simulador...");
                 g_cpu->turn_off();
             }
-            else if (command == "kill")
+            else if (command == "ps")
             {
-                kill_current_process();
+                cmd_list_processes();
+            }
+            else if (command.starts_with("kill "))
+            {
+                std::string pid_str(command.substr(5));
+                try
+                {
+                    uint16_t pid = static_cast<uint16_t>(std::stoi(pid_str));
+                    cmd_kill_process(pid);
+                }
+                catch (...)
+                {
+                    g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
+                    terminal_println(g_cpu, Terminal::Kernel, "Uso incorreto. Exemplo: kill 1");
+                }
             }
             else if (command.starts_with("load "))
             {
                 Process *proc = load_user_program(command.substr(5));
-                
                 if (proc != nullptr)
                 {
                     execute_process(proc);
@@ -166,6 +253,10 @@ namespace OS
             terminal_println(g_cpu, Terminal::Kernel, current_process->name);
         }
 
+        Process *failed_proc = current_process;
+        current_process = nullptr;
+        destroy_process(failed_proc);
+
         execute_process(idle_process);
     }
 
@@ -190,6 +281,10 @@ namespace OS
             g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
             terminal_print_str(g_cpu, Terminal::Kernel, "Processo finalizado: ");
             terminal_println(g_cpu, Terminal::Kernel, current_process->name);
+
+            Process *proc_to_exit = current_process;
+            current_process = nullptr;
+            destroy_process(proc_to_exit);
         }
         
         execute_process(idle_process);
@@ -210,7 +305,11 @@ namespace OS
                 {
                     g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
                     terminal_println(g_cpu, Terminal::Kernel, "[ERRO Syscall 1] Endereco de memoria invalido detectado. Abortando processo...");
-                    kill_current_process();
+                    
+                    if (current_process != nullptr && current_process->id != 0)
+                    {
+                        cmd_kill_process(current_process->id);
+                    }
                     return;
                 }
 
@@ -238,7 +337,10 @@ namespace OS
         {
             g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
             terminal_println(g_cpu, Terminal::Kernel, "[ERRO Fatal] Excecao na Syscall 1. Abortando...");
-            kill_current_process();
+            if (current_process != nullptr && current_process->id != 0)
+            {
+                cmd_kill_process(current_process->id);
+            }
         }
     }
 

@@ -13,6 +13,14 @@ namespace OS
 {
     Process *current_process = nullptr;
     Process *idle_process = nullptr;
+    std::vector<Process*> process_table;
+    static uint16_t next_pid = 0;
+
+    void init_process_manager()
+    {
+        process_table.clear();
+        next_pid = 0;
+    }
 
     std::vector<uint16_t> read_program_file(std::string_view filename)
     {
@@ -29,10 +37,11 @@ namespace OS
     Process* create_process_struct(std::string_view filename, bool is_idle)
     {
         Process *proc = new Process();
-        proc->id = is_idle ? 0 : 1;
+        proc->id = is_idle ? 0 : ++next_pid;
         proc->pointControl = 1;
-        proc->active = false;
+        proc->state = ProcessState::Ready;
         proc->num_pages = 0;
+        proc->sleep_ticks = 0;
 
         for (uint8_t r = 0; r < Config::nregs; r++)
             proc->gprs[r] = 0;
@@ -47,6 +56,7 @@ namespace OS
             proc->page_table.at(p).reset();
         }
 
+        process_table.push_back(proc);
         return proc;
     }
 
@@ -62,10 +72,7 @@ namespace OS
         for (size_t p = 0; p < pages_needed && p < Config::ptes_per_table; p++)
         {
             int frame = allocate_physical_frame();
-            if (frame == -1)
-            {
-                break;
-            }
+            if (frame == -1) break;
 
             uint16_t phy_frame = static_cast<uint16_t>(frame);
 
@@ -99,6 +106,34 @@ namespace OS
             }
         }
         proc->num_pages = 0;
+    }
+
+    void destroy_process(Process *proc)
+    {
+        if (proc == nullptr) return;
+
+        free_process_memory(proc);
+
+        for (auto it = process_table.begin(); it != process_table.end(); ++it)
+        {
+            if (*it == proc)
+            {
+                process_table.erase(it);
+                break;
+            }
+        }
+
+        delete proc;
+    }
+
+    Process* get_process_by_pid(uint16_t pid)
+    {
+        for (auto *proc : process_table)
+        {
+            if (proc != nullptr && proc->id == pid)
+                return proc;
+        }
+        return nullptr;
     }
 
     Process* load_user_program(std::string_view filename)
@@ -140,23 +175,18 @@ namespace OS
     {
         if (proc == nullptr) return;
 
-        if (current_process != nullptr && current_process->active)
+        if (current_process != nullptr && current_process->state == ProcessState::Running)
         {
             current_process->pointControl = g_cpu->get_pc();
             for (uint8_t r = 0; r < Config::nregs; r++)
             {
                 current_process->gprs[r] = g_cpu->get_gpr(r);
             }
-        }
-
-        if (current_process != nullptr && current_process != idle_process && current_process != proc)
-        {
-            free_process_memory(current_process);
-            delete current_process;
+            current_process->state = ProcessState::Ready;
         }
 
         current_process = proc;
-        current_process->active = true;
+        current_process->state = ProcessState::Running;
 
         g_cpu->set_page_table(&current_process->page_table);
         g_cpu->set_vmem_mode(VmemMode::Paging);
@@ -175,9 +205,10 @@ namespace OS
             terminal_print_str(g_cpu, Terminal::Kernel, "Processo abortado via comando kill: ");
             terminal_println(g_cpu, Terminal::Kernel, current_process->name);
             
-            free_process_memory(current_process);
-            delete current_process;
+            Process *proc_to_destroy = current_process;
             current_process = nullptr;
+            
+            destroy_process(proc_to_destroy);
 
             execute_process(idle_process);
         }

@@ -7,18 +7,29 @@
 
 namespace OS
 {
+    enum class ProcessState
+    {
+        Ready,
+        Running,
+        Blocked,
+        Terminated
+    };
+
     struct Process
     {
-        uint16_t id;
-        char name[64];
-        uint16_t pointControl;
-        bool active;
+        uint16_t id;                  // PID
+        char name[64];                // Nome do binario
+        uint16_t pointControl;        // PC
+        ProcessState state;           // Estado do processo
 
+        // Registradores para contexto
         uint16_t gprs[Config::nregs];
 
+        // Tabela de paginas
         Arch::Cpu::PageTable page_table;
 
-        uint16_t num_pages;  
+        uint16_t num_pages;           // Quantidade de paginas alocadas
+        uint32_t sleep_ticks;         // Para syscall de dormir futuro
     };
 }
 
