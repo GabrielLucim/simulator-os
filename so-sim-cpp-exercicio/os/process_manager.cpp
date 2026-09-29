@@ -15,11 +15,13 @@ namespace OS
     Process *idle_process = nullptr;
     std::vector<Process*> process_table;
     static uint16_t next_pid = 0;
+    static size_t current_rr_index = 0;
 
     void init_process_manager()
     {
         process_table.clear();
         next_pid = 0;
+        current_rr_index = 0;
     }
 
     std::vector<uint16_t> read_program_file(std::string_view filename)
@@ -210,11 +212,57 @@ namespace OS
             
             destroy_process(proc_to_destroy);
 
-            execute_process(idle_process);
+            schedule();
         }
         else
         {
             terminal_println(g_cpu, Terminal::Kernel, "Nenhum processo do usuario em execucao.");
         }
+    }
+
+    void schedule()
+    {
+        if (process_table.empty()) return;
+
+        if (current_process != nullptr && current_process->state == ProcessState::Running)
+        {
+            current_process->pointControl = g_cpu->get_pc();
+            for (uint8_t r = 0; r < Config::nregs; r++)
+            {
+                current_process->gprs[r] = g_cpu->get_gpr(r);
+            }
+            current_process->state = ProcessState::Ready;
+        }
+
+        size_t total = process_table.size();
+        Process *next_proc = nullptr;
+
+        for (size_t i = 0; i < total; i++)
+        {
+            current_rr_index = (current_rr_index + 1) % total;
+            Process *p = process_table[current_rr_index];
+
+            if (p != nullptr && p->id != 0 && (p->state == ProcessState::Ready || p->state == ProcessState::Running))
+            {
+                next_proc = p;
+                break;
+            }
+        }
+
+        if (next_proc == nullptr)
+        {
+            next_proc = idle_process;
+        }
+
+        current_process = next_proc;
+        current_process->state = ProcessState::Running;
+
+        g_cpu->set_page_table(&current_process->page_table);
+        g_cpu->set_vmem_mode(VmemMode::Paging);
+
+        for (uint8_t r = 0; r < Config::nregs; r++)
+            g_cpu->set_gpr(r, current_process->gprs[r]);
+
+        g_cpu->set_pc(current_process->pointControl);
     }
 }

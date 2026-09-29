@@ -29,7 +29,6 @@ namespace OS
     static void sys_print_newline();
     static void sys_print_integer();
 
-    // Novas funcoes para os comandos do terminal
     static void cmd_list_processes();
     static void cmd_kill_process(uint16_t pid);
 
@@ -131,7 +130,6 @@ namespace OS
             case ProcessState::Terminated: state_str = "Terminated"; break;
             }
 
-            // Memoria alocada em palavras (words)
             uint32_t mem_words = proc->num_pages << Config::page_size_bits;
 
             std::string line = std::to_string(proc->id) + "\t" +
@@ -287,7 +285,7 @@ namespace OS
             destroy_process(proc_to_exit);
         }
         
-        execute_process(idle_process);
+        schedule();
     }
 
     static void sys_print_string()
