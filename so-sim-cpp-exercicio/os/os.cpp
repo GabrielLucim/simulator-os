@@ -19,6 +19,8 @@ namespace OS
     char cmd_buffer[256];
     uint16_t cmd_length = 0;
 
+    constexpr uint16_t PROCESS_QUANTUM_TICKS = 5;
+
     static void reset_cmd_buffer();
     static void process_shell_command();
     static void handle_keyboard_input();
@@ -28,6 +30,7 @@ namespace OS
     static void sys_print_string();
     static void sys_print_newline();
     static void sys_print_integer();
+    static void sys_sleep();
 
     static void cmd_list_processes();
     static void cmd_kill_process(uint16_t pid);
@@ -75,7 +78,23 @@ namespace OS
             break;
 
         case InterruptCode::Timer:
-            schedule();
+
+            update_sleeping_processes();
+
+            if (current_process != nullptr && current_process->id != 0 && current_process->state == ProcessState::Running)
+            {
+                current_process->quantum_ticks++;
+                if (current_process->quantum_ticks >= PROCESS_QUANTUM_TICKS)
+                {
+                    current_process->quantum_ticks = 0;
+                    current_process->state = ProcessState::Ready;
+                    schedule();
+                }
+            }
+            else
+            {
+                schedule();
+            }
             break;
 
         case InterruptCode::Disk:
@@ -129,7 +148,9 @@ namespace OS
             {
             case ProcessState::Ready:      state_str = "Ready"; break;
             case ProcessState::Running:    state_str = "Running"; break;
-            case ProcessState::Blocked:    state_str = "Blocked"; break;
+            case ProcessState::Blocked:    
+                state_str = "Blocked(" + std::to_string(proc->sleep_ticks) + ")"; 
+                break;
             case ProcessState::Terminated: state_str = "Terminated"; break;
             }
 
@@ -219,7 +240,6 @@ namespace OS
                 Process *proc = load_user_program(command.substr(5));
                 if (proc != nullptr)
                 {
-
                     execute_process(proc);
                 }
             }
@@ -272,6 +292,7 @@ namespace OS
         case 1: sys_print_string(); break;
         case 2: sys_print_newline(); break;
         case 3: sys_print_integer(); break;
+        case 4: sys_sleep(); break;
         default: break;
         }
     }
@@ -357,5 +378,20 @@ namespace OS
         uint16_t value = g_cpu->get_gpr(1);
         g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::App));
         terminal_print_str(g_cpu, Terminal::App, std::to_string(value).c_str());
+    }
+
+    static void sys_sleep()
+    {
+        uint16_t ticks = g_cpu->get_gpr(1);
+
+        if (current_process != nullptr && current_process->id != 0)
+        {
+            if (ticks > 0)
+            {
+                current_process->sleep_ticks = ticks;
+                current_process->state = ProcessState::Blocked;
+            }
+            schedule();
+        }
     }
 }

@@ -23,6 +23,7 @@ namespace OS
     Process* get_process_by_pid(uint16_t pid);
     void destroy_process(Process *proc);
 
+    void update_sleeping_processes();
     void schedule();
 }
 

@@ -229,6 +229,21 @@ namespace OS
         }
     }
 
+    void update_sleeping_processes()
+    {
+        for (auto *proc : process_table)
+        {
+            if (proc != nullptr && proc->state == ProcessState::Blocked && proc->sleep_ticks > 0)
+            {
+                proc->sleep_ticks--;
+                if (proc->sleep_ticks == 0)
+                {
+                    proc->state = ProcessState::Ready;
+                }
+            }
+        }
+    }
+
     void schedule()
     {
         if (process_table.empty()) return;

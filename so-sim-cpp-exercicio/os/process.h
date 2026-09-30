@@ -29,7 +29,8 @@ namespace OS
         Arch::Cpu::PageTable page_table;
 
         uint16_t num_pages;           // Quantidade de paginas alocadas
-        uint32_t sleep_ticks;         // Para syscall de dormir futuro
+        uint32_t sleep_ticks;         // Contagem de ticks restantes para o sleep
+        uint16_t quantum_ticks;       // Contagem do quantum atual do processo
     };
 }
 
