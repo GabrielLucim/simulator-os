@@ -125,6 +125,15 @@ namespace OS
             }
         }
 
+        if (process_table.empty())
+        {
+            current_rr_index = 0;
+        }
+        else
+        {
+            current_rr_index = current_rr_index % process_table.size();
+        }
+
         delete proc;
     }
 

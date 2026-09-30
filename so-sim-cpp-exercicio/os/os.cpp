@@ -75,6 +75,9 @@ namespace OS
             break;
 
         case InterruptCode::Timer:
+            schedule();
+            break;
+
         case InterruptCode::Disk:
             break;
         }
@@ -171,7 +174,7 @@ namespace OS
         {
             current_process = nullptr;
             destroy_process(proc);
-            execute_process(idle_process);
+            schedule(); 
         }
         else
         {
@@ -216,6 +219,7 @@ namespace OS
                 Process *proc = load_user_program(command.substr(5));
                 if (proc != nullptr)
                 {
+
                     execute_process(proc);
                 }
             }
@@ -255,7 +259,7 @@ namespace OS
         current_process = nullptr;
         destroy_process(failed_proc);
 
-        execute_process(idle_process);
+        schedule();
     }
 
     void syscall()
