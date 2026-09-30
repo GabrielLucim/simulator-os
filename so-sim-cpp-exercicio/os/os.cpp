@@ -30,7 +30,10 @@ namespace OS
     static void sys_print_string();
     static void sys_print_newline();
     static void sys_print_integer();
+    static void sys_malloc();
+    static void sys_free();
     static void sys_sleep();
+    static void sys_get_time();
 
     static void cmd_list_processes();
     static void cmd_kill_process(uint16_t pid);
@@ -292,7 +295,10 @@ namespace OS
         case 1: sys_print_string(); break;
         case 2: sys_print_newline(); break;
         case 3: sys_print_integer(); break;
-        case 4: sys_sleep(); break;
+        case 4: sys_malloc(); break;
+        case 5: sys_free(); break;
+        case 6: sys_sleep(); break;
+        case 7: sys_get_time(); break;
         default: break;
         }
     }
@@ -380,6 +386,31 @@ namespace OS
         terminal_print_str(g_cpu, Terminal::App, std::to_string(value).c_str());
     }
 
+    static void sys_malloc()
+    {
+        uint16_t num_words = g_cpu->get_gpr(1);
+
+        if (num_words == 0 || current_process == nullptr)
+        {
+            g_cpu->set_gpr(1, 0);
+            return;
+        }
+
+        uint16_t pages_needed = (num_words + Config::page_size - 1) / Config::page_size;
+
+        uint16_t allocated_vaddr = current_process->num_pages * Config::page_size;
+
+        current_process->num_pages += pages_needed;
+
+        g_cpu->set_gpr(1, 1);
+        g_cpu->set_gpr(2, allocated_vaddr);
+    }
+
+    static void sys_free()
+    {
+        // A ser implementado
+    }
+
     static void sys_sleep()
     {
         uint16_t ticks = g_cpu->get_gpr(1);
@@ -393,5 +424,10 @@ namespace OS
             }
             schedule();
         }
+    }
+
+    static void sys_get_time()
+    {
+        // A ser implementado
     }
 }

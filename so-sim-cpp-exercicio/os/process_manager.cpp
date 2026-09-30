@@ -248,14 +248,17 @@ namespace OS
     {
         if (process_table.empty()) return;
 
-        if (current_process != nullptr && current_process->state == ProcessState::Running)
+        if (current_process != nullptr)
         {
             current_process->pointControl = g_cpu->get_pc();
             for (uint8_t r = 0; r < Config::nregs; r++)
             {
                 current_process->gprs[r] = g_cpu->get_gpr(r);
             }
-            current_process->state = ProcessState::Ready;
+            if (current_process->state == ProcessState::Running)
+            {
+                current_process->state = ProcessState::Ready;
+            }
         }
 
         size_t total = process_table.size();
