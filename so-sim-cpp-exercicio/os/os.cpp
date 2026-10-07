@@ -43,7 +43,7 @@ namespace OS
         for (int i = 0; i < 256; i++)
             cmd_buffer[i] = '\0';
         cmd_length = 0;
-        
+
         g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Command));
         terminal_print_str(g_cpu, Terminal::Command, "> ");
     }
@@ -144,17 +144,24 @@ namespace OS
 
         for (auto *proc : process_table)
         {
-            if (proc == nullptr) continue;
+            if (proc == nullptr)
+                continue;
 
             std::string state_str = "Unknown";
             switch (proc->state)
             {
-            case ProcessState::Ready:      state_str = "Ready"; break;
-            case ProcessState::Running:    state_str = "Running"; break;
-            case ProcessState::Blocked:    
-                state_str = "Blocked(" + std::to_string(proc->sleep_ticks) + ")"; 
+            case ProcessState::Ready:
+                state_str = "Ready";
                 break;
-            case ProcessState::Terminated: state_str = "Terminated"; break;
+            case ProcessState::Running:
+                state_str = "Running";
+                break;
+            case ProcessState::Blocked:
+                state_str = "Blocked(" + std::to_string(proc->sleep_ticks) + ")";
+                break;
+            case ProcessState::Terminated:
+                state_str = "Terminated";
+                break;
             }
 
             uint32_t mem_words = proc->num_pages << Config::page_size_bits;
@@ -198,7 +205,7 @@ namespace OS
         {
             current_process = nullptr;
             destroy_process(proc);
-            schedule(); 
+            schedule();
         }
         else
         {
@@ -291,16 +298,34 @@ namespace OS
 
         switch (syscall_num)
         {
-        case 0: sys_process_exit(); break;
-        case 1: sys_print_string(); break;
-        case 2: sys_print_newline(); break;
-        case 3: sys_print_integer(); break;
-        case 4: sys_malloc(); break;
-        case 5: sys_free(); break;
-        case 6: sys_sleep(); break;
-        case 7: sys_get_time(); break;
-        default: break;
+        case 0:
+            sys_process_exit();
+            break;
+        case 1:
+            sys_print_string();
+            break;
+        case 2:
+            sys_print_newline();
+            break;
+        case 3:
+            sys_print_integer();
+            break;
+        case 4:
+            sys_malloc();
+            break;
+        case 5:
+            sys_free();
+            break;
+        case 6:
+            sys_sleep();
+            break;
+        case 7:
+            sys_get_time();
+            break;
+        default:
+            break;
         }
+        // NAO alteramos g_cpu->set_pc() aqui! A instrucao de syscall ja foi consumida pela CPU.
     }
 
     static void sys_process_exit()
@@ -315,7 +340,7 @@ namespace OS
             current_process = nullptr;
             destroy_process(proc_to_exit);
         }
-        
+
         schedule();
     }
 
@@ -323,18 +348,18 @@ namespace OS
     {
         uint16_t vaddr = g_cpu->get_gpr(1);
         g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::App));
-        
+
         try
         {
             while (true)
             {
                 int32_t paddr = vaddr_to_paddr(vaddr);
-                
+
                 if (paddr < 0)
                 {
                     g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
-                    terminal_println(g_cpu, Terminal::Kernel, "[ERRO Syscall 1] Endereco de memoria invalido detectado. Abortando processo...");
-                    
+                    terminal_println(g_cpu, Terminal::Kernel, "[ERRO Syscall 1] Endereco invalido. Abortando...");
+
                     if (current_process != nullptr && current_process->id != 0)
                     {
                         cmd_kill_process(current_process->id);
@@ -343,11 +368,13 @@ namespace OS
                 }
 
                 uint16_t val = g_cpu->pmem_read(static_cast<uint16_t>(paddr));
-                
-                if (val == 0) break;
+
+                if (val == 0)
+                    break;
 
                 char ch1 = static_cast<char>(val & 0xFF);
-                if (ch1 == '\0') break;
+                if (ch1 == '\0')
+                    break;
 
                 const char str1[2] = {ch1, '\0'};
                 terminal_print_str(g_cpu, Terminal::App, str1);
@@ -397,7 +424,6 @@ namespace OS
         }
 
         uint16_t pages_needed = (num_words + Config::page_size - 1) / Config::page_size;
-
         uint16_t allocated_vaddr = current_process->num_pages * Config::page_size;
 
         current_process->num_pages += pages_needed;
@@ -408,7 +434,7 @@ namespace OS
 
     static void sys_free()
     {
-        // A ser implementado
+        // Implementar se necessario
     }
 
     static void sys_sleep()
@@ -428,6 +454,8 @@ namespace OS
 
     static void sys_get_time()
     {
-        // A ser implementado
+        static uint16_t system_time = 0;
+        system_time += 5;
+        g_cpu->set_gpr(1, system_time);
     }
 }
