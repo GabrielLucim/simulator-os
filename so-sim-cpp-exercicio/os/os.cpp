@@ -325,7 +325,6 @@ namespace OS
         default:
             break;
         }
-        // NAO alteramos g_cpu->set_pc() aqui! A instrucao de syscall ja foi consumida pela CPU.
     }
 
     static void sys_process_exit()
@@ -358,7 +357,7 @@ namespace OS
                 if (paddr < 0)
                 {
                     g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
-                    terminal_println(g_cpu, Terminal::Kernel, "[ERRO Syscall 1] Endereco invalido. Abortando...");
+                    terminal_println(g_cpu, Terminal::Kernel, "[ERRO Syscall 1] Endereco de memoria invalido detectado. Abortando processo...");
 
                     if (current_process != nullptr && current_process->id != 0)
                     {
@@ -434,7 +433,7 @@ namespace OS
 
     static void sys_free()
     {
-        // Implementar se necessario
+        // A ser implementado
     }
 
     static void sys_sleep()
