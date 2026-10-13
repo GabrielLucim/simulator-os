@@ -245,6 +245,23 @@ namespace OS
                     terminal_println(g_cpu, Terminal::Kernel, "Uso incorreto. Exemplo: kill 1");
                 }
             }
+            else if (command.starts_with("timer "))
+            {
+                std::string cycles_str(command.substr(6));
+                try
+                {
+                    uint16_t cycles = static_cast<uint16_t>(std::stoi(cycles_str));
+                    g_cpu->write_io(IO_Port::TimerInterruptCycles, cycles);
+                    g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
+                    terminal_print_str(g_cpu, Terminal::Kernel, "Ciclos do temporizador alterados para: ");
+                    terminal_println(g_cpu, Terminal::Kernel, std::to_string(cycles).c_str());
+                }
+                catch (...)
+                {
+                    g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
+                    terminal_println(g_cpu, Terminal::Kernel, "Uso incorreto. Exemplo: timer 1000");
+                }
+            }
             else if (command.starts_with("load "))
             {
                 Process *proc = load_user_program(command.substr(5));
@@ -453,8 +470,7 @@ namespace OS
 
     static void sys_get_time()
     {
-        static uint16_t system_time = 0;
-        system_time += 5;
-        g_cpu->set_gpr(1, system_time);
+        uint16_t seconds = g_cpu->read_io(IO_Port::TimerGetTimeSeconds);
+        g_cpu->set_gpr(1, seconds);
     }
 }
