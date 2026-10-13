@@ -282,9 +282,17 @@ namespace OS
 
     static void handle_page_fault_or_gpf()
     {
-        g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
         auto exception_info = g_cpu->get_ref_cpu_exception();
 
+        if (exception_info.type == Arch::Cpu::CpuException::Type::VmemPageFault && current_process != nullptr)
+        {
+            if (handle_demand_paging(current_process, exception_info.vaddr))
+            {
+                return;
+            }
+        }
+
+        g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
         terminal_print_str(g_cpu, Terminal::Kernel, "!!! FALHA DE CPU / GPF DETECTADA (");
         terminal_print_str(g_cpu, Terminal::Kernel, Arch::enum_class_to_str(exception_info.type));
         terminal_println(g_cpu, Terminal::Kernel, ") !!!");
@@ -450,7 +458,24 @@ namespace OS
 
     static void sys_free()
     {
-        // A ser implementado
+        uint16_t vaddr = g_cpu->get_gpr(1);
+
+        if (current_process == nullptr)
+        {
+            g_cpu->set_gpr(1, 0);
+            return;
+        }
+
+        bool success = free_virtual_page(current_process, vaddr);
+
+        if (success)
+        {
+            g_cpu->set_gpr(1, 1);
+        }
+        else
+        {
+            g_cpu->set_gpr(1, 0);
+        }
     }
 
     static void sys_sleep()

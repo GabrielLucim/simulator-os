@@ -61,15 +61,87 @@ namespace OS
 
     void configure_hardware_page(uint16_t vpage, uint16_t phy_frame, bool present, bool readable, bool writeable, bool executable)
     {
-        if (g_cpu == nullptr || g_cpu->get_page_table() == nullptr) return;
+        if (g_cpu == nullptr || g_cpu->get_page_table() == nullptr)
+            return;
 
         auto &entry = g_cpu->get_page_table()->at(vpage);
         entry.reset();
-        
+
         entry.set(Arch::Cpu::PteField::PhyFrameID, phy_frame);
         entry.set(Arch::Cpu::PteField::Present, present ? 1 : 0);
         entry.set(Arch::Cpu::PteField::Readable, readable ? 1 : 0);
         entry.set(Arch::Cpu::PteField::Writable, writeable ? 1 : 0);
         entry.set(Arch::Cpu::PteField::Executable, executable ? 1 : 0);
+    }
+
+    bool free_virtual_page(Process *proc, uint16_t vaddr)
+    {
+        if (proc == nullptr)
+            return false;
+
+        uint16_t vpage = vaddr >> Config::page_size_bits;
+
+        if (vpage >= Config::ptes_per_table)
+        {
+            return false;
+        }
+
+        auto &entry = proc->page_table.at(vpage);
+
+        if (entry.get(Arch::Cpu::PteField::Present) == 0)
+        {
+            return false;
+        }
+
+        uint16_t frame = entry.get(Arch::Cpu::PteField::PhyFrameID);
+        free_physical_frame(frame);
+        entry.reset();
+
+        if (g_cpu != nullptr && g_cpu->get_page_table() == &proc->page_table)
+        {
+            g_cpu->get_page_table()->at(vpage).reset();
+        }
+
+        return true;
+    }
+
+    bool handle_demand_paging(Process *proc, uint16_t vaddr)
+    {
+        if (proc == nullptr)
+            return false;
+
+        uint16_t vpage = vaddr >> Config::page_size_bits;
+
+        if (vpage >= proc->num_pages || vpage >= Config::ptes_per_table)
+        {
+            return false;
+        }
+
+        auto &entry = proc->page_table.at(vpage);
+
+        if (entry.get(Arch::Cpu::PteField::Present) == 1)
+        {
+            return false;
+        }
+
+        int frame = allocate_physical_frame();
+        if (frame == -1)
+        {
+            return false;
+        }
+
+        uint16_t phy_frame = static_cast<uint16_t>(frame);
+
+        configure_hardware_page(vpage, phy_frame, true, true, true, true);
+
+        proc->page_table.at(vpage) = g_cpu->get_page_table()->at(vpage);
+
+        uint16_t phys_base_addr = phy_frame << Config::page_size_bits;
+        for (size_t w = 0; w < Config::page_size; w++)
+        {
+            g_cpu->pmem_write(phys_base_addr | w, 0);
+        }
+
+        return true;
     }
 }
