@@ -11,6 +11,17 @@ namespace OS
 
     static bool physical_frames_used[TOTAL_PHYSICAL_FRAMES] = {false};
 
+    void init_vmem()
+    {
+        for (size_t i = 0; i < TOTAL_PHYSICAL_FRAMES; i++)
+        {
+            physical_frames_used[i] = false;
+        }
+
+        physical_frames_used[0] = true;
+        physical_frames_used[1] = true;
+    }
+
     int allocate_physical_frame()
     {
         for (size_t i = 2; i < TOTAL_PHYSICAL_FRAMES; i++)

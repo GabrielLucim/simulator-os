@@ -54,6 +54,7 @@ namespace OS
         g_cpu = cpu;
         cmd_length = 0;
 
+        init_vmem();
         init_process_manager();
 
         g_cpu->set_vmem_mode(VmemMode::Paging);
