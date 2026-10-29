@@ -37,6 +37,7 @@ namespace OS
 
     static void cmd_list_processes();
     static void cmd_kill_process(uint16_t pid);
+    static void cmd_help();
 
     static void reset_cmd_buffer()
     {
@@ -136,6 +137,19 @@ namespace OS
         }
     }
 
+    static void cmd_help()
+    {
+        g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
+        terminal_println(g_cpu, Terminal::Kernel, "--- COMANDOS DISPONIVEIS ---");
+        terminal_println(g_cpu, Terminal::Kernel, "help           : Exibe esta lista de ajuda.");
+        terminal_println(g_cpu, Terminal::Kernel, "ps             : Lista os processos ativos e suas informacoes.");
+        terminal_println(g_cpu, Terminal::Kernel, "kill <pid>     : Encerra o processo com o PID especificado.");
+        terminal_println(g_cpu, Terminal::Kernel, "load <arquivo> : Carrega e executa um programa binario.");
+        terminal_println(g_cpu, Terminal::Kernel, "timer <ciclos> : Configura a frequencia da interrupcao do relogio.");
+        terminal_println(g_cpu, Terminal::Kernel, "quit / exit    : Desliga o simulador.");
+        terminal_println(g_cpu, Terminal::Kernel, "----------------------------");
+    }
+
     static void cmd_list_processes()
     {
         g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
@@ -226,6 +240,10 @@ namespace OS
                 g_cpu->write_io(IO_Port::TerminalSet, static_cast<uint16_t>(Terminal::Kernel));
                 terminal_println(g_cpu, Terminal::Kernel, "Desligando o simulador...");
                 g_cpu->turn_off();
+            }
+            else if (command == "help")
+            {
+                cmd_help();
             }
             else if (command == "ps")
             {
