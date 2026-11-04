@@ -14,7 +14,9 @@ namespace OS
     void free_physical_frame(uint16_t frame);
     int32_t vaddr_to_paddr(uint16_t vaddr);
     void configure_hardware_page(uint16_t vpage, uint16_t phy_frame, bool present, bool readable, bool writeable, bool executable);
-    bool free_virtual_page(Process *proc, uint16_t vaddr);
+    
+    bool free_virtual_page(Process *proc, uint16_t vaddr, uint16_t num_pages = 1);
+    
     bool handle_demand_paging(Process *proc, uint16_t vaddr);
 }
 

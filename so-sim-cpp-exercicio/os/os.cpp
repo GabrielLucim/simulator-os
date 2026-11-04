@@ -471,6 +471,8 @@ namespace OS
 
         current_process->num_pages += pages_needed;
 
+        current_process->allocations.push_back({allocated_vaddr, pages_needed});
+
         g_cpu->set_gpr(1, 1);
         g_cpu->set_gpr(2, allocated_vaddr);
     }
@@ -485,9 +487,23 @@ namespace OS
             return;
         }
 
-        bool success = free_virtual_page(current_process, vaddr);
+        uint16_t num_pages_to_free = 1;
+        bool found = false;
 
-        if (success)
+        for (auto it = current_process->allocations.begin(); it != current_process->allocations.end(); ++it)
+        {
+            if (it->start_vaddr == vaddr)
+            {
+                num_pages_to_free = it->num_pages;
+                current_process->allocations.erase(it);
+                found = true;
+                break;
+            }
+        }
+
+        bool success = free_virtual_page(current_process, vaddr, num_pages_to_free);
+
+        if (success || found)
         {
             g_cpu->set_gpr(1, 1);
         }

@@ -85,35 +85,42 @@ namespace OS
         entry.set(Arch::Cpu::PteField::Executable, executable ? 1 : 0);
     }
 
-    bool free_virtual_page(Process *proc, uint16_t vaddr)
+    bool free_virtual_page(Process *proc, uint16_t vaddr, uint16_t num_pages)
     {
-        if (proc == nullptr)
+        if (proc == nullptr || num_pages == 0)
             return false;
 
-        uint16_t vpage = vaddr >> Config::page_size_bits;
+        uint16_t start_vpage = vaddr >> Config::page_size_bits;
 
-        if (vpage >= Config::ptes_per_table)
+        bool freed_any = false;
+
+        for (uint16_t i = 0; i < num_pages; i++)
         {
-            return false;
+            uint16_t vpage = start_vpage + i;
+
+            if (vpage >= Config::ptes_per_table)
+            {
+                break;
+            }
+
+            auto &entry = proc->page_table.at(vpage);
+
+            if (entry.get(Arch::Cpu::PteField::Present) == 1)
+            {
+                uint16_t frame = entry.get(Arch::Cpu::PteField::PhyFrameID);
+                free_physical_frame(frame);
+                freed_any = true;
+            }
+
+            entry.reset();
+
+            if (g_cpu != nullptr && g_cpu->get_page_table() == &proc->page_table)
+            {
+                g_cpu->get_page_table()->at(vpage).reset();
+            }
         }
 
-        auto &entry = proc->page_table.at(vpage);
-
-        if (entry.get(Arch::Cpu::PteField::Present) == 0)
-        {
-            return false;
-        }
-
-        uint16_t frame = entry.get(Arch::Cpu::PteField::PhyFrameID);
-        free_physical_frame(frame);
-        entry.reset();
-
-        if (g_cpu != nullptr && g_cpu->get_page_table() == &proc->page_table)
-        {
-            g_cpu->get_page_table()->at(vpage).reset();
-        }
-
-        return true;
+        return freed_any;
     }
 
     bool handle_demand_paging(Process *proc, uint16_t vaddr)
