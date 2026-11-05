@@ -108,6 +108,7 @@ namespace OS
             }
         }
         proc->num_pages = 0;
+        proc->allocations.clear();
     }
 
     void destroy_process(Process *proc)
@@ -200,7 +201,6 @@ namespace OS
         current_process->state = ProcessState::Running;
 
         g_cpu->set_page_table(&current_process->page_table);
-        g_cpu->set_vmem_mode(VmemMode::Paging);
 
         for (uint8_t r = 0; r < Config::nregs; r++)
             g_cpu->set_gpr(r, current_process->gprs[r]);
@@ -285,7 +285,6 @@ namespace OS
         current_process->state = ProcessState::Running;
 
         g_cpu->set_page_table(&current_process->page_table);
-        g_cpu->set_vmem_mode(VmemMode::Paging);
 
         for (uint8_t r = 0; r < Config::nregs; r++)
             g_cpu->set_gpr(r, current_process->gprs[r]);
