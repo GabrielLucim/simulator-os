@@ -17,6 +17,39 @@ namespace OS
     static uint16_t next_pid = 0;
     static size_t current_rr_index = 0;
 
+    static void save_current_context()
+    {
+        if (current_process != nullptr)
+        {
+            current_process->pointControl = g_cpu->get_pc();
+            for (uint8_t r = 0; r < Config::nregs; r++)
+            {
+                current_process->gprs[r] = g_cpu->get_gpr(r);
+            }
+            if (current_process->state == ProcessState::Running)
+            {
+                current_process->state = ProcessState::Ready;
+            }
+        }
+    }
+
+    static void restore_process_context(Process *proc)
+    {
+        if (proc == nullptr) return;
+
+        current_process = proc;
+        current_process->state = ProcessState::Running;
+
+        g_cpu->set_page_table(&current_process->page_table);
+
+        for (uint8_t r = 0; r < Config::nregs; r++)
+        {
+            g_cpu->set_gpr(r, current_process->gprs[r]);
+        }
+
+        g_cpu->set_pc(current_process->pointControl);
+    }
+
     void init_process_manager()
     {
         process_table.clear();
@@ -187,25 +220,8 @@ namespace OS
     {
         if (proc == nullptr) return;
 
-        if (current_process != nullptr && current_process->state == ProcessState::Running)
-        {
-            current_process->pointControl = g_cpu->get_pc();
-            for (uint8_t r = 0; r < Config::nregs; r++)
-            {
-                current_process->gprs[r] = g_cpu->get_gpr(r);
-            }
-            current_process->state = ProcessState::Ready;
-        }
-
-        current_process = proc;
-        current_process->state = ProcessState::Running;
-
-        g_cpu->set_page_table(&current_process->page_table);
-
-        for (uint8_t r = 0; r < Config::nregs; r++)
-            g_cpu->set_gpr(r, current_process->gprs[r]);
-
-        g_cpu->set_pc(current_process->pointControl);
+        save_current_context();
+        restore_process_context(proc);
     }
 
     void kill_current_process()
@@ -248,18 +264,7 @@ namespace OS
     {
         if (process_table.empty()) return;
 
-        if (current_process != nullptr)
-        {
-            current_process->pointControl = g_cpu->get_pc();
-            for (uint8_t r = 0; r < Config::nregs; r++)
-            {
-                current_process->gprs[r] = g_cpu->get_gpr(r);
-            }
-            if (current_process->state == ProcessState::Running)
-            {
-                current_process->state = ProcessState::Ready;
-            }
-        }
+        save_current_context();
 
         size_t total = process_table.size();
         Process *next_proc = nullptr;
@@ -281,14 +286,6 @@ namespace OS
             next_proc = idle_process;
         }
 
-        current_process = next_proc;
-        current_process->state = ProcessState::Running;
-
-        g_cpu->set_page_table(&current_process->page_table);
-
-        for (uint8_t r = 0; r < Config::nregs; r++)
-            g_cpu->set_gpr(r, current_process->gprs[r]);
-
-        g_cpu->set_pc(current_process->pointControl);
+        restore_process_context(next_proc);
     }
 }
