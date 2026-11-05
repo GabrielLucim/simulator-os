@@ -1,3 +1,4 @@
+#include <list>
 #include <vector>
 #include <string>
 #include <string_view>
@@ -13,9 +14,9 @@ namespace OS
 {
     Process *current_process = nullptr;
     Process *idle_process = nullptr;
-    std::vector<Process*> process_table;
+    std::list<Process*> process_table;
     static uint16_t next_pid = 0;
-    static size_t current_rr_index = 0;
+    static std::list<Process*>::iterator current_rr_it;
 
     static void save_current_context()
     {
@@ -54,7 +55,7 @@ namespace OS
     {
         process_table.clear();
         next_pid = 0;
-        current_rr_index = 0;
+        current_rr_it = process_table.end();
     }
 
     std::vector<uint16_t> read_program_file(std::string_view filename)
@@ -154,18 +155,16 @@ namespace OS
         {
             if (*it == proc)
             {
-                process_table.erase(it);
+                if (current_rr_it == it)
+                {
+                    current_rr_it = process_table.erase(it);
+                }
+                else
+                {
+                    process_table.erase(it);
+                }
                 break;
             }
-        }
-
-        if (process_table.empty())
-        {
-            current_rr_index = 0;
-        }
-        else
-        {
-            current_rr_index = current_rr_index % process_table.size();
         }
 
         delete proc;
@@ -266,20 +265,29 @@ namespace OS
 
         save_current_context();
 
-        size_t total = process_table.size();
         Process *next_proc = nullptr;
 
-        for (size_t i = 0; i < total; i++)
+        if (current_rr_it == process_table.end())
         {
-            current_rr_index = (current_rr_index + 1) % total;
-            Process *p = process_table[current_rr_index];
+            current_rr_it = process_table.begin();
+        }
 
+        auto start_it = current_rr_it;
+        do
+        {
+            ++current_rr_it;
+            if (current_rr_it == process_table.end())
+            {
+                current_rr_it = process_table.begin();
+            }
+
+            Process *p = *current_rr_it;
             if (p != nullptr && p->id != 0 && (p->state == ProcessState::Ready || p->state == ProcessState::Running))
             {
                 next_proc = p;
                 break;
             }
-        }
+        } while (current_rr_it != start_it);
 
         if (next_proc == nullptr)
         {

@@ -3,13 +3,14 @@
 
 #include <string_view>
 #include <vector>
+#include <list>
 #include "process.h"
 
 namespace OS
 {
     extern Process *current_process;
     extern Process *idle_process;
-    extern std::vector<Process*> process_table;
+    extern std::list<Process*> process_table;
 
     void init_process_manager();
     
